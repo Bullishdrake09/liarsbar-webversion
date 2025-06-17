@@ -239,7 +239,7 @@ document.addEventListener('DOMContentLoaded', () => {
         cardElement.textContent = cardType;
         
         let icon = '';
-        if (cardType === 'Koning') icon = '👑';
+        if (cardType === 'Koning') icon = '�';
         else if (cardType === 'Koningin') icon = '👸';
         else if (cardType === 'Boer') icon = '🤵';
         
@@ -353,7 +353,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 revealedInfo.actualCards.forEach((card, index) => {
                     const cardElement = document.createElement('div');
                     cardElement.classList.add('card', 'revealed-card'); // Voeg 'revealed-card' class toe voor animatie
-                    cardElement.style.animationDelay = `${index * 0.1}s`; // Staggered delay
+                    // Pas de animationDelay aan naar 0.5s per kaart
+                    cardElement.style.animationDelay = `${index * 0.5}s`; // Veranderd van 0.1s naar 0.5s
 
                     let icon = '';
                     if (card === 'Koning') icon = '👑';
