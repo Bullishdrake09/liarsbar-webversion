@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Liar's Bar – Mystic Dice Editie</title>
+    <!-- Tailwind CSS CDN for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <!-- Jouw eigen CSS voor specifieke stijlen -->
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container mx-auto p-8 max-w-7xl">
+        <h1 class="text-4xl md:text-5xl font-bold text-center mb-8 text-indigo-400">Liar's Bar – Mystic Dice Editie</h1>
+
+        <!-- Message Box -->
+        <div id="messageBox" class="hidden">
+            <p id="messageText" class="text-lg"></p>
+            <button id="messageBoxCloseBtn">Sluiten</button>
+        </div>
+
+        <!-- Naam invoer en Lobby Systeem -->
+        <div id="lobby-section" class="flex flex-col items-center space-y-6">
+            <div class="w-full max-w-md bg-gray-700 p-6 rounded-xl shadow-lg">
+                <h2 class="text-2xl font-semibold mb-4 text-center">Speler Naam</h2>
+                <input type="text" id="playerNameInput" placeholder="Voer je naam in" class="w-full p-3 rounded-lg bg-gray-800 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-200" maxlength="20">
+                <button id="setPlayerNameBtn" class="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transition duration-200 ease-in-out transform hover:scale-105">Naam Instellen</button>
+                <p id="nameStatus" class="mt-2 text-sm text-center text-green-400 hidden">Naam ingesteld als: <span id="currentPlayerName"></span></p>
+            </div>
+
+            <div id="lobby-controls" class="w-full max-w-md bg-gray-700 p-6 rounded-xl shadow-lg flex flex-col space-y-4 hidden">
+                <h2 class="text-2xl font-semibold mb-4 text-center">Lobby</h2>
+                <input type="text" id="lobbyCodeInput" placeholder="Lobby Code" class="w-full p-3 rounded-lg bg-gray-800 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-200 uppercase" maxlength="4">
+                <button id="createLobbyBtn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transition duration-200 ease-in-out transform hover:scale-105">Lobby Aanmaken</button>
+                <button id="joinLobbyBtn" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transition duration-200 ease-in-out transform hover:scale-105">Lobby Joinen</button>
+                
+                <div id="lobby-info" class="mt-4 p-4 bg-gray-800 rounded-lg hidden">
+                    <p class="text-lg font-semibold">Huidige Lobby: <span id="currentLobbyCode" class="text-yellow-400"></span></p>
+                    <h3 class="text-md font-semibold mt-2">Spelers in Lobby:</h3>
+                    <ul id="playersInLobby" class="list-disc list-inside ml-4 text-gray-300">
+                        <!-- Spelers zullen hier dynamisch worden toegevoegd -->
+                    </ul>
+                    <button id="startGameBtn" class="w-full mt-4 bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transition duration-200 ease-in-out transform hover:scale-105 hidden">Start Spel</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Game Interface (verborgen totdat het spel begint) -->
+        <div id="game-section" class="hidden grid grid-cols-1 lg:grid-cols-3 gap-8 mt-8">
+            <!-- Linkerkolom: Spelers & Spel Log -->
+            <div class="col-span-1 bg-gray-700 p-6 rounded-xl shadow-lg flex flex-col">
+                <h2 class="text-2xl font-semibold mb-4 text-center">Spelers</h2>
+                <div id="player-list" class="flex-grow">
+                    <!-- Spelerstatussen komen hier -->
+                </div>
+                
+                <h2 class="text-2xl font-semibold mb-4 mt-6 text-center">Spel Log</h2>
+                <div id="game-log" class="bg-gray-800 p-4 rounded-lg h-64 overflow-y-auto text-sm text-gray-300 flex-grow">
+                    <!-- Log berichten komen hier -->
+                </div>
+
+                <!-- Chat (optioneel) -->
+                <div class="mt-4">
+                    <input type="text" id="chatInput" placeholder="Type chatbericht..." class="w-full p-2 rounded-lg bg-gray-800 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-200">
+                    <button id="sendChatBtn" class="w-full mt-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-lg shadow-md transition duration-200 ease-in-out">Verstuur Chat</button>
+                </div>
+            </div>
+
+            <!-- Middenkolom: Spelbord (Middenkaarten, Stapel, Acties) -->
+            <div class="col-span-1 lg:col-span-2 bg-gray-700 p-6 rounded-xl shadow-lg flex flex-col">
+                <h2 class="text-2xl font-semibold mb-4 text-center">Middenkaarten (Deck Type)</h2>
+                <div id="deck-type-cards" class="flex justify-center space-x-4 mb-8">
+                    <!-- Middenkaarten komen hier -->
+                </div>
+
+                <h2 class="text-2xl font-semibold mb-4 text-center">Stapel</h2>
+                <div id="pile-display" class="bg-gray-800 p-6 rounded-lg text-center h-24 flex items-center justify-center">
+                    <p id="currentClaim" class="text-xl font-bold text-yellow-300">Geen claims nog.</p>
+                </div>
+
+                <!-- Sectie voor onthulde kaarten -->
+                <div id="revealed-cards-section" class="hidden mt-4 p-4 bg-gray-800 rounded-lg text-center">
+                    <h3 id="revealedMessage" class="text-xl font-bold text-yellow-300 mb-4"></h3>
+                    <div id="revealedCardsDisplay" class="flex flex-wrap justify-center gap-4">
+                        <!-- Onthulde kaarten komen hier -->
+                    </div>
+                </div>
+
+                <h2 class="text-2xl font-semibold mb-4 mt-8 text-center">Jouw Hand</h2>
+                <div id="player-hand" class="flex flex-wrap justify-center gap-4 mb-8">
+                    <!-- Speler handkaarten komen hier -->
+                </div>
+                
+                <h2 class="text-2xl font-semibold mb-4 text-center">Jouw Acties</h2>
+                <div id="game-actions" class="flex flex-wrap justify-center gap-4">
+                    <!-- De 'Kies type claim' dropdown is verwijderd -->
+                    <button id="makePlayBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transition duration-200 ease-in-out transform hover:scale-105" disabled>Leg Kaarten</button>
+                    <!-- Knoppen voor het reageren op een claim -->
+                    <button id="believeClaimBtn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transition duration-200 ease-in-out transform hover:scale-105 hidden" disabled>Ik denk dat ... de waarheid spreekt</button>
+                    <button id="callLiarBtn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transition duration-200 ease-in-out transform hover:scale-105" disabled>LIAR!</button>
+                    <button id="rollDiceBtn" class="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transition duration-200 ease-in-out transform hover:scale-105 hidden">Werp Dobbelsteen</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Socket.IO client library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.js"></script>
+    <!-- Jouw eigen JavaScript voor client-side logica -->
+    <script src="/static/js/main.js"></script>
+</body>
+</html>

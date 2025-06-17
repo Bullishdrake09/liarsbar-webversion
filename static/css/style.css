@@ -1,0 +1,126 @@
+/* Algemene body en container styling */
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: #1a202c; /* Donkere achtergrond */
+    color: #e2e8f0; /* Lichte tekstkleur */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 1rem;
+    box-sizing: border-box;
+}
+.container {
+    background-color: #2d3748; /* Iets lichtere donkere achtergrond voor container */
+    border-radius: 1.5rem; /* Meer afgeronde hoeken */
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    padding: 2.5rem; /* Ruimere padding */
+    width: 100%;
+    max-width: 90rem; /* Grotere max-width voor desktop */
+}
+
+/* Kaart styling */
+.card {
+    background-color: #4a5568; /* Achtergrond voor kaarten */
+    border-radius: 0.75rem; /* Afgeronde hoeken voor kaarten */
+    padding: 0.75rem 1.25rem; /* Padding voor kaarten */
+    display: inline-flex;
+    flex-direction: column; /* Voor tekst bovenaan en afbeelding onderaan */
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    color: #ffffff;
+    min-width: 4rem; /* Minimum breedte voor kaarten */
+    height: 5.5rem; /* Hoogte voor kaarten */
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    text-align: center;
+}
+.card.selected {
+    border: 3px solid #63b3ed; /* Geselecteerde kaartrand */
+    transform: translateY(-0.25rem); /* Omhoog bewegen bij selectie */
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05), 0 0 0 3px rgba(99, 179, 237, 0.5);
+}
+.card-icon {
+    font-size: 2.5rem; /* Grotere iconen voor kaarten */
+    line-height: 1; /* Voorkom extra witruimte */
+    margin-top: 0.25rem; /* Kleine marge bovenaan */
+}
+
+/* Speler status styling */
+.player-status {
+    display: flex;
+    align-items: center;
+    padding: 0.5rem 0;
+}
+.player-status .dot {
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 50%;
+    margin-right: 0.5rem;
+}
+.player-status.alive .dot {
+    background-color: #48bb78; /* Groen */
+}
+.player-status.dead .dot {
+    background-color: #e53e3e; /* Rood */
+}
+.player-status.current-turn .name {
+    font-weight: 700;
+    color: #ecc94b; /* Geel */
+}
+.player-status.dead .name {
+    text-decoration: line-through;
+    color: #a0aec0; /* Grijs */
+}
+
+/* Message box styling */
+#messageBox {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: #2d3748;
+    padding: 2rem;
+    border-radius: 1rem;
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    text-align: center;
+    display: none; /* Verborgen standaard */
+    color: #e2e8f0;
+}
+#messageBox button {
+    background-color: #4299e1;
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.5rem;
+    margin-top: 1.5rem;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    border: none; /* Verwijder standaard knoprand */
+}
+#messageBox button:hover {
+    background-color: #3182ce;
+}
+
+/* Algemene button styling voor hover effecten, etc. */
+button:hover {
+    filter: brightness(1.1); /* Licht de knop op bij hover */
+}
+button:active {
+    transform: scale(0.98); /* Klein 'indruk'-effect bij klikken */
+}
+button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    filter: none;
+    transform: none;
+}
+
+/* Responsive aanpassingen */
+@media (min-width: 1024px) {
+    #game-section {
+        grid-template-columns: 1fr 2fr; /* Pas de grid aan voor grotere schermen */
+    }
+}
