@@ -338,7 +338,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updateMakePlayButtonState(gameState) {
         // Helper functie om de Leg Kaarten knop te updaten
-        makePlayBtn.disabled = selectedCards.length === 0 || gameState.currentTurn !== myPlayerId || gameState.phase !== 'awaitingPlay';
+        const myPlayer = gameState.players.find(p => p.id === myPlayerId);
+        const hasCards = myPlayer && myPlayer.hand && myPlayer.hand.length > 0;
+        makePlayBtn.disabled = selectedCards.length === 0 || gameState.currentTurn !== myPlayerId || gameState.phase !== 'awaitingPlay' || !hasCards;
     }
 
 
@@ -348,6 +350,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const isAwaitingLiarCall = (gameState.phase === 'awaitingLiarCall');
         const isResolvingDiceRoll = (gameState.phase === 'resolvingDiceRoll');
         const isGameOver = (gameState.phase === 'gameOver');
+
+        // Get my player object to check hand size
+        const myPlayer = gameState.players.find(p => p.id === myPlayerId);
+        const hasCards = myPlayer && myPlayer.hand && myPlayer.hand.length > 0;
 
         // Reset alle knoppen zichtbaarheid en disabled state
         makePlayBtn.disabled = true;
@@ -359,24 +365,22 @@ document.addEventListener('DOMContentLoaded', () => {
         rollDiceBtn.disabled = true;
 
         if (isGameOver) {
-            // Alle knoppen uitgeschakeld
             return;
         }
 
         if (isMyTurn) {
             if (isAwaitingPlay) {
                 // Mijn beurt om kaarten te leggen
-                updateMakePlayButtonState(gameState); 
-                rollDiceBtn.classList.add('hidden'); 
-                callLiarBtn.classList.add('hidden');
-                believeClaimBtn.classList.add('hidden'); 
+                // Enable if I have selected cards AND I have cards in hand.
+                makePlayBtn.disabled = selectedCards.length === 0 || !hasCards; 
+                // All other buttons should be hidden/disabled in this phase
             } else if (isAwaitingLiarCall) {
                 // Mijn beurt om te reageren op een claim van een ANDERE speler
-                makePlayBtn.disabled = true;
-                rollDiceBtn.classList.add('hidden');
+                makePlayBtn.disabled = true; // Kan geen kaarten leggen in deze fase
 
                 const lastClaimerName = gameState.lastClaimDetails ? gameState.lastClaimDetails.playerName : null;
-                if (lastClaimerName && gameState.lastClaimDetails.player !== myPlayerId) { 
+                // Enable LIAR/BELIEVE only if it's not my own claim AND I have cards
+                if (lastClaimerName && gameState.lastClaimDetails.player !== myPlayerId && hasCards) { 
                     believeClaimBtn.classList.remove('hidden'); 
                     believeClaimBtn.disabled = false;
                     believeClaimBtn.textContent = `Ik denk dat ${lastClaimerName} de waarheid spreekt`;
@@ -385,24 +389,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     callLiarBtn.disabled = false; 
                     callLiarBtn.textContent = `Ik denk dat ${lastClaimerName} liegt`;
                 } else {
+                    // Verberg knoppen als het mijn eigen claim is of als ik geen kaarten heb
                     believeClaimBtn.classList.add('hidden');
                     callLiarBtn.classList.add('hidden');
                 }
 
             } else if (isResolvingDiceRoll) {
                 // Mijn beurt om dobbelsteen te werpen
+                // Deze actie hangt niet af van het hebben van kaarten in de hand.
                 rollDiceBtn.classList.remove('hidden');
                 rollDiceBtn.disabled = false;
-                makePlayBtn.disabled = true;
-                believeClaimBtn.classList.add('hidden');
-                callLiarBtn.classList.add('hidden');
+                // Andere knoppen uitgeschakeld
             }
         } else {
-            // Het is niet mijn beurt, dus alle actieknoppen zijn disabled/verborgen voor mij.
-            makePlayBtn.disabled = true;
-            believeClaimBtn.classList.add('hidden');
-            callLiarBtn.classList.add('hidden');
-            rollDiceBtn.classList.add('hidden'); 
+            // Niet mijn beurt, alle actieknoppen zijn disabled/verborgen voor mij.
+            // (al afgehandeld door standaard reset, expliciet voor duidelijkheid)
         }
     }
 

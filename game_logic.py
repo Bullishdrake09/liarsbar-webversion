@@ -28,8 +28,13 @@ def _get_player_by_id(game_state, player_id):
     return next((p for p in game_state['players'] if p['id'] == player_id), None)
 
 def _get_active_players(game_state):
-    """Retourneert een lijst van spelers die nog in het spel zijn."""
+    """Retourneert een lijst van spelers die nog in het spel zijn (alive: True)."""
     return [p for p in game_state['players'] if p['alive']]
+
+def _get_all_players_in_lobby(game_state):
+    """Retourneert een lijst van alle spelers in de lobby, ongeacht hun 'alive' status."""
+    return game_state['players']
+
 
 def _get_next_active_player_id(game_state, current_player_id):
     """
@@ -261,10 +266,49 @@ def make_play(game_state, player_id, cards_played):
 
     # Ga naar de volgende actieve speler
     game_state['currentTurn'] = _get_next_active_player_id(game_state, player_id)
-    
     game_state['phase'] = 'awaitingLiarCall' # Na een zet kan er 'LIAR!' geroepen worden of geloofd worden
 
-    game_state['log'].append(f"{player['name']} claimt {len(cards_played)} {claimed_card_type}(s) te hebben gelegd.")
+    # NIEUWE LOGICA: Controleer of de toegewezen speler kan reageren (heeft kaarten).
+    # Zo niet, schuif de beurt automatisch door.
+    current_responder_id = game_state['currentTurn']
+    first_candidate_id = current_responder_id
+    looper_count = 0 
+    max_loops = len(game_state['players']) * 2 # Veiligheidslimiet
+
+    while True:
+        responder_player = _get_player_by_id(game_state, current_responder_id)
+
+        if not responder_player or not responder_player['alive']:
+            # Dit zou normaal gesproken betekenen dat er geen actieve spelers meer zijn
+            # en het spel ten einde zou moeten zijn.
+            game_state['log'].append("Geen actieve spelers gevonden om te reageren op de claim.")
+            game_state['phase'] = 'gameOver' 
+            break
+
+        # Controleer of de speler 'alive' is EN kaarten in de hand heeft
+        if responder_player['alive'] and len(responder_player['hand']) > 0:
+            game_state['currentTurn'] = current_responder_id # Deze speler is de juiste responder
+            game_state['log'].append(f"{responder_player['name']} is aan de beurt om te reageren op de claim.")
+            break # Geschikte responder gevonden, stop de loop
+        else:
+            # Deze speler is levend maar heeft geen kaarten, dus kan niet reageren.
+            game_state['log'].append(f"{responder_player['name']} heeft geen kaarten en kan niet reageren op de claim. Beurt gaat door.")
+            
+            # Ga naar de volgende actieve speler in de beurtvolgorde
+            next_potential_responder_id = _get_next_active_player_id(game_state, current_responder_id)
+
+            if next_potential_responder_id is None or next_potential_responder_id == first_candidate_id:
+                # We zijn rond geweest of er is niemand meer gevonden die kan reageren
+                game_state['log'].append("Geen speler gevonden met kaarten om te reageren. Spel is mogelijk geblokkeerd of afgelopen.")
+                game_state['phase'] = 'gameOver' # Forceer game over of een 'vastgelopen' fase
+                break
+            
+            current_responder_id = next_potential_responder_id # Test de volgende kandidaat
+            looper_count += 1
+            if looper_count > max_loops:
+                 game_state['log'].append("ERROR: Loop voor het vinden van de volgende reageerder lijkt vast te zitten.")
+                 game_state['phase'] = 'gameOver'
+                 break
 
     return True, "Zet succesvol uitgevoerd."
 
@@ -272,7 +316,7 @@ def make_play(game_state, player_id, cards_played):
 def believe_claim(game_state, believing_player_id):
     """
     Verwerkt een speler die besluit de claim van de vorige speler te geloven.
-    De beurt blijft bij de gelovende speler en de stapel wordt NIET gereset.
+    De beurt gaat naar de gelovende speler en de stapel wordt NIET gereset.
     Args:
         game_state (dict): De huidige GameState.
         believing_player_id (str): De ID van de speler die de claim gelooft.
@@ -314,7 +358,6 @@ def believe_claim(game_state, believing_player_id):
 
     # Stel revealedCardsInfo in, maar zorg dat 'isRevealed' FALSE blijft.
     # Dit zorgt ervoor dat de kaarten niet getoond worden op de UI.
-    # De outcomeMessage is hier wel voor de UI, mocht je een subtiele hint willen geven.
     game_state['revealedCardsInfo'] = {
         "isRevealed": False, # BELANGRIJKE WIJZIGING: kaarten niet tonen!
         "claimerId": None,
@@ -325,19 +368,47 @@ def believe_claim(game_state, believing_player_id):
         "outcomeMessage": f"{believing_player_name} gelooft de claim van {claiming_player_name}."
     }
 
-    # Voeg NU de logberichten toe op basis van de werkelijke uitkomst
+    # Voeg gedetailleerde logberichten toe over het resultaat (zonder de 'waarheid' te vermelden in de log)
     game_state['log'].append(f"{believing_player_name} gelooft de claim van {claiming_player_name}.")
-    # Verwijderd: De gedetailleerde log over de waarheid van de claim, die alleen bij LIAR! hoort.
-    # if is_claim_true:
-    #     game_state['log'].append(f"De claim van {claiming_player_name} was waar.")
-    # else:
-    #     game_state['log'].append(f"De claim van {claiming_player_name} was onwaar, maar werd geloofd door {believing_player_name}.")
 
     # De beurt blijft bij de `believing_player_id`
-    # De stapel blijft intact, dus geen reset van pile, actualPileCards, of lastClaimDetails
-    
-    game_state['currentTurn'] = believing_player_id # Beurt blijft bij gelovende speler
+    game_state['currentTurn'] = believing_player_id # BELANGRIJKE WIJZIGING: beurt blijft bij de gelovende speler
     game_state['phase'] = 'awaitingPlay' # De speler kan nu zijn eigen kaarten leggen
+
+    # NIEUWE LOGICA: Controleer of de toegewezen speler kan spelen (heeft kaarten).
+    # Zo niet, schuif de beurt automatisch door.
+    current_player_for_play_id = game_state['currentTurn']
+    first_play_candidate_id = current_player_for_play_id
+    play_looper_count = 0
+    max_loops = len(game_state['players']) * 2 # Veiligheidslimiet
+
+    while True:
+        player_for_play = _get_player_by_id(game_state, current_player_for_play_id)
+
+        if not player_for_play or not player_for_play['alive']:
+            game_state['log'].append("Geen actieve spelers gevonden om de volgende zet te doen.")
+            game_state['phase'] = 'gameOver'
+            break
+        
+        if player_for_play['alive'] and len(player_for_play['hand']) > 0:
+            game_state['currentTurn'] = current_player_for_play_id
+            game_state['log'].append(f"{player_for_play['name']} is aan de beurt om kaarten te leggen.")
+            break
+        else:
+            game_state['log'].append(f"{player_for_play['name']} heeft geen kaarten en kan niet spelen. Beurt gaat door.")
+            next_potential_player_for_play_id = _get_next_active_player_id(game_state, current_player_for_play_id)
+
+            if next_potential_player_for_play_id is None or next_potential_player_for_play_id == first_play_candidate_id:
+                game_state['log'].append("Geen speler gevonden met kaarten om te spelen. Spel is mogelijk geblokkeerd of afgelopen.")
+                game_state['phase'] = 'gameOver'
+                break
+            
+            current_player_for_play_id = next_potential_player_for_play_id
+            play_looper_count += 1
+            if play_looper_count > max_loops:
+                game_state['log'].append("ERROR: Speelbeurt loop lijkt vast te zitten.")
+                game_state['phase'] = 'gameOver'
+                break
 
     return True, "Claim succesvol geloofd. Je bent aan de beurt."
 
@@ -475,7 +546,9 @@ def roll_mystic_dice(game_state, player_id):
             # app.py zal de 'game_over' event broadcasten
         else:
             # Als het spel niet voorbij is, geef de beurt door aan de volgende actieve speler
-            game_state['currentTurn'] = _get_next_active_player_id(game_state, player_id)
+            # Hier: de persoon die de dobbelsteenworp overleefde of de volgende actieve speler
+            next_turn_player_id = _get_next_active_player_id(game_state, player_id)
+            game_state['currentTurn'] = next_turn_player_id
             game_state['phase'] = 'awaitingPlay'
             # Start een nieuwe ronde: deel kaarten opnieuw uit, kies nieuw deckType
             _start_new_round(game_state, game_state['currentTurn'])
@@ -505,9 +578,18 @@ def _start_new_round(game_state, starting_player_id):
     """
     game_state['log'].append("Een nieuwe ronde begint!")
 
-    # Deel kaarten opnieuw uit aan ALLE actieve spelers
-    active_players = _get_active_players(game_state)
-    _create_and_deal_deck(active_players) # Gebruik de nieuwe deal functie
+    # Maak alle spelers die in de lobby zitten weer 'alive'
+    for player in game_state['players']:
+        player['alive'] = True # Zet alle spelers weer levend
+        player['diceRollAttempts'] = 0 # Reset dobbelsteenpogingen voor iedereen
+    
+    # Deel kaarten opnieuw uit aan ALLE spelers die nu 'alive' zijn (dus iedereen in de lobby)
+    all_players_in_lobby = _get_all_players_in_lobby(game_state)
+    _create_and_deal_deck(all_players_in_lobby) # Gebruik de nieuwe deal functie
+
+    # Regenereer de turnOrder om alle spelers weer op te nemen
+    game_state['turnOrder'] = [p["id"] for p in game_state['players']]
+    random.shuffle(game_state['turnOrder']) # Schud de beurtvolgorde opnieuw
 
     # Kies een nieuw deckType
     game_state['deckType'] = [random.choice(BASE_CARD_TYPES)] # Gebruik BASE_CARD_TYPES
@@ -521,14 +603,17 @@ def _start_new_round(game_state, starting_player_id):
         "claimedAmount": None, "actualCardsPlayed": []
     }
 
-    # Reset dobbelsteenpogingen voor ALLE actieve spelers voor de nieuwe ronde
-    for player in active_players:
-        player['diceRollAttempts'] = 0
+    # Zorg dat de beurt bij de juiste speler ligt.
+    # Als de oorspronkelijke starting_player_id nog bestaat, gebruik die.
+    # Anders, pak de eerste speler uit de nieuw geschudde turnOrder.
+    if starting_player_id in game_state['turnOrder']:
+        game_state['currentTurn'] = starting_player_id
+    else:
+        game_state['currentTurn'] = game_state['turnOrder'][0] if game_state['turnOrder'] else None
 
-    # Zorg dat de beurt bij de juiste speler ligt
-    game_state['currentTurn'] = starting_player_id
     game_state['phase'] = 'awaitingPlay' # Begin nieuwe ronde in speelfase
-    game_state['log'].append(f"{_get_player_by_id(game_state, starting_player_id)['name']} is aan de beurt.")
+    current_turn_player_name = _get_player_by_id(game_state, game_state['currentTurn'])['name'] if game_state['currentTurn'] else "Onbekende speler"
+    game_state['log'].append(f"{current_turn_player_name} is aan de beurt.")
 
 
 def check_win_condition(game_state):
