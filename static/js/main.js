@@ -11,7 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const currentPlayerNameSpan = document.getElementById('currentPlayerName');
     const lobbyControls = document.getElementById('lobby-controls');
     const lobbyCodeInput = document.getElementById('lobbyCodeInput');
-    const createLobbyBtn = document.getElementById('createLobbyBtn');
+    const createLobbyBtn = document.getElementById('createLobbyBtn'); // FIX: Deze regel is gecorrigeerd
     const joinLobbyBtn = document.getElementById('joinLobbyBtn');
     const lobbyInfo = document.getElementById('lobby-info');
     const currentLobbyCodeSpan = document.getElementById('currentLobbyCode');
@@ -181,7 +181,13 @@ document.addEventListener('DOMContentLoaded', () => {
             playerStatusDiv.appendChild(nameSpan);
 
             // Voeg aantal dobbelsteen pogingen toe indien van toepassing
-            if (player.diceRollAttempts > 0) {
+            // Update: toon "Dood" als speler niet meer alive is
+            if (!player.alive) {
+                 const statusSpan = document.createElement('span');
+                 statusSpan.classList.add('ml-2', 'text-sm', 'text-red-400', 'font-bold');
+                 statusSpan.textContent = '(Dood)';
+                 playerStatusDiv.appendChild(statusSpan);
+            } else if (player.diceRollAttempts > 0) {
                  const diceAttemptsSpan = document.createElement('span');
                  diceAttemptsSpan.classList.add('ml-2', 'text-sm', 'text-gray-400');
                  diceAttemptsSpan.textContent = `(Dobbelen: ${player.diceRollAttempts}x)`;
@@ -306,28 +312,45 @@ document.addEventListener('DOMContentLoaded', () => {
             revealedCardsSection.classList.remove('hidden'); // Toon de sectie
             revealedMessageP.textContent = revealedInfo.outcomeMessage; // Toon het resultaatbericht
 
-            revealedInfo.actualCards.forEach(card => {
-                const cardElement = document.createElement('div');
-                cardElement.classList.add('card'); // Hergebruik kaart styling
-                let icon = '';
-                if (card === 'Koning') icon = '👑';
-                else if (card === 'Koningin') icon = '👸';
-                else if (card === 'Boer') icon = '🤵';
-                else if (card === 'Joker') icon = '🃏';
-                
-                if (icon) {
-                    const iconSpan = document.createElement('span');
-                    iconSpan.classList.add('card-icon');
-                    iconSpan.textContent = icon;
-                    cardElement.appendChild(iconSpan);
-                    const typeSpan = document.createElement('span');
-                    typeSpan.textContent = card;
-                    cardElement.appendChild(typeSpan);
-                } else {
-                    cardElement.textContent = card;
+            // Als er dobbelsteen resultaat is, toon dat
+            if (revealedInfo.diceRollOutcome) {
+                const diceOutcomeDiv = document.createElement('div');
+                diceOutcomeDiv.classList.add('dice-outcome');
+                diceOutcomeDiv.textContent = `🎲 ${revealedInfo.diceRollOutcome.face}`; // Toon dobbelsteen icoon + nummer
+                // Voeg een specifieke stijl toe voor verlies
+                if (revealedInfo.diceRollOutcome.isLoss) {
+                    diceOutcomeDiv.classList.add('dice-loss');
                 }
-                revealedCardsDisplayDiv.appendChild(cardElement);
-            });
+                revealedCardsDisplayDiv.appendChild(diceOutcomeDiv);
+            }
+            
+            // Toon de werkelijke kaarten (indien van toepassing)
+            if (revealedInfo.actualCards && revealedInfo.actualCards.length > 0) {
+                revealedInfo.actualCards.forEach((card, index) => {
+                    const cardElement = document.createElement('div');
+                    cardElement.classList.add('card', 'revealed-card'); // Voeg 'revealed-card' class toe voor animatie
+                    cardElement.style.animationDelay = `${index * 0.1}s`; // Staggered delay
+
+                    let icon = '';
+                    if (card === 'Koning') icon = '👑';
+                    else if (card === 'Koningin') icon = '👸';
+                    else if (card === 'Boer') icon = '🤵';
+                    else if (card === 'Joker') icon = '🃏';
+                    
+                    if (icon) {
+                        const iconSpan = document.createElement('span');
+                        iconSpan.classList.add('card-icon');
+                        iconSpan.textContent = icon;
+                        cardElement.appendChild(iconSpan);
+                        const typeSpan = document.createElement('span');
+                        typeSpan.textContent = card;
+                        cardElement.appendChild(typeSpan);
+                    } else {
+                        cardElement.textContent = card;
+                    }
+                    revealedCardsDisplayDiv.appendChild(cardElement);
+                });
+            }
         } else {
             revealedCardsSection.classList.add('hidden'); // Verberg de sectie
             revealedCardsDisplayDiv.innerHTML = '';

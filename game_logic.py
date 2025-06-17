@@ -15,7 +15,8 @@ FULL_DECK_TEMPLATE = {
     'Joker': 2
 }
 
-MYSTIC_DICE_FACES = ['Koning', 'Koningin', 'Boer', 'Joker', 'Joker', 'Joker'] # 3 Jokers voor meer spanning!
+# De gezichten van de mystieke dobbelsteen zijn nu nummers 1 t/m 6
+MYSTIC_DICE_FACES = ['1', '2', '3', '4', '5', '6']
 
 
 # --- Helper Functies voor Spel Logica ---
@@ -116,7 +117,8 @@ def _reset_revealed_cards_info(game_state):
         "actualCards": [],
         "claimWasTrue": None,
         "playerToRollDice": None,
-        "outcomeMessage": None
+        "outcomeMessage": None,
+        "diceRollOutcome": None # Nieuw veld voor dobbelsteen resultaat
     }
 
 
@@ -169,7 +171,8 @@ def create_new_game(lobby_code, player_data_list):
         "revealedCardsInfo": {
             "isRevealed": False, "claimerId": None, "claimerName": None,
             "actualCards": [], "claimWasTrue": None, "playerToRollDice": None,
-            "outcomeMessage": None
+            "outcomeMessage": None,
+            "diceRollOutcome": None # Nieuw veld
         },
         "phase": "awaitingPlay",
         "log": [f"Spel gestart in lobby {lobby_code}!", f"{start_player_name} is aan de beurt."]
@@ -494,7 +497,8 @@ def call_liar(game_state, calling_player_id):
         "actualCards": actual_cards_played_in_claim, # De werkelijke kaarten die waren gelegd
         "claimWasTrue": is_claim_true,
         "playerToRollDice": player_who_must_roll_sid, # ID van de speler die nu moet dobbelen
-        "outcomeMessage": outcome_message
+        "outcomeMessage": outcome_message,
+        "diceRollOutcome": None # Dit wordt pas na de worp gevuld
     }
 
     # Reset de stapel na een LIAR call. De kaarten verdwijnen uit het spel.
@@ -537,18 +541,30 @@ def roll_mystic_dice(game_state, player_id):
     player_to_roll['diceRollAttempts'] += 1
     attempts = player_to_roll['diceRollAttempts']
 
-    # Kans op verlies: 1 / (7 - attempts) (zoals eerder besproken/geïmplementeerd)
-    # Eerste keer (attempts=1): 1/6, Tweede keer (attempts=2): 1/5, ... Zesde keer (attempts=6): 1/1 (gegarandeerd verlies)
-    # Dit is een progressieve kans op verlies, onafhankelijk van specifieke dobbelsteengezichten.
-    loss_chance = 1 / (6 - (attempts - 1)) if attempts <= 6 else 1.0
+    # Bepaal de mogelijke dobbelsteengezichten op basis van het aantal pogingen
+    # Eerste keer (attempts=1): [1,2,3,4,5,6]
+    # Tweede keer (attempts=2): [2,3,4,5,6] (1 valt af)
+    # Derde keer (attempts=3): [3,4,5,6] (1,2 vallen af)
+    # etc.
+    current_dice_pool = [str(i) for i in range(attempts, 7)] # Start vanaf 'attempts' tot 6
 
-    roll_result_is_loss = random.random() < loss_chance # Bepaalt of de dobbelsteen een "verlies" oplevert
+    if not current_dice_pool: # Dit zou alleen bij attempts > 6 kunnen gebeuren, voor de zekerheid
+        current_dice_pool = ['6'] # Forceer een 6 als er geen andere opties zijn
+
+    dice_face_rolled = random.choice(current_dice_pool) # Kies een getal uit de gereduceerde pool
+    roll_result_is_loss = (dice_face_rolled == '6') # Verlies als een 6 wordt gerold
     
     player_name = player_to_roll['name']
+
+    # Vul de diceRollOutcome in revealedCardsInfo
+    game_state['revealedCardsInfo']['diceRollOutcome'] = {
+        "face": dice_face_rolled,
+        "isLoss": roll_result_is_loss
+    }
     
     if roll_result_is_loss:
         # Speler verliest opnieuw een leven (eindigt het spel voor deze speler)
-        game_state['log'].append(f"{player_name} wierp de mystieke dobbelsteen en verloor! Hij is uit het spel!")
+        game_state['log'].append(f"{player_name} wierp de mystieke dobbelsteen en rolde een {dice_face_rolled}! Hij is uit het spel!")
         player_to_roll['alive'] = False
         
         # Verwijder de speler uit de turnOrder als deze definitief uitgeschakeld is
@@ -561,7 +577,6 @@ def roll_mystic_dice(game_state, player_id):
             # app.py zal de 'game_over' event broadcasten
         else:
             # Als het spel niet voorbij is, geef de beurt door aan de volgende actieve speler
-            # Hier: de persoon die de dobbelsteenworp overleefde of de volgende actieve speler
             next_turn_player_id = _get_next_active_player_id(game_state, player_id)
             game_state['currentTurn'] = next_turn_player_id
             game_state['phase'] = 'awaitingPlay'
@@ -570,7 +585,7 @@ def roll_mystic_dice(game_state, player_id):
 
     else:
         # Speler overleeft de dobbelsteenworp, mag doorgaan met spelen
-        game_state['log'].append(f"{player_name} wierp de mystieke dobbelsteen en overleefde! Hij blijft in het spel!")
+        game_state['log'].append(f"{player_name} wierp de mystieke dobbelsteen en rolde een {dice_face_rolled}! Hij blijft in het spel!")
         # BELANGRIJK: Na een succesvolle worp, is het nog steeds de beurt van deze speler
         # om een zet te doen (kaarten te leggen)
         game_state['phase'] = 'awaitingPlay'
@@ -579,7 +594,10 @@ def roll_mystic_dice(game_state, player_id):
         _start_new_round(game_state, player_id) # De speler die de beurt krijgt is degene die de dobbelsteen succesvol wierp
 
     # Reset de onthulde kaarten info na de dobbelsteenworp (of herverdeling)
-    _reset_revealed_cards_info(game_state)
+    # Behalve de dobbelsteen informatie zelf, die willen we nog even tonen
+    game_state['revealedCardsInfo']['isRevealed'] = True # Zorg dat de sectie zichtbaar blijft voor dobbelsteen info
+    game_state['revealedCardsInfo']['outcomeMessage'] = f"Dobbelsteen resultaat voor {player_name}:"
+
 
     return True, "Dobbelsteen geworpen."
 
@@ -664,8 +682,7 @@ def check_win_condition(game_state):
         current_responder = _get_player_by_id(game_state, game_state['currentTurn'])
 
         # De voorwaarden voor de verplichte LIAR! call zijn:
-        # 1. Er zijn precies 2 spelers over die nog levend zijn EN kaarten hebben.
-        #    Dit betekent dat alle andere levende spelers (indien aanwezig) geen kaarten meer hebben.
+        # 1. Er is precies 1 speler met kaarten over.
         # 2. De speler die zojuist de claim deed (claimer_player) is levend en heeft NU 0 kaarten.
         # 3. De speler die aan de beurt is om te reageren (current_responder) is levend en heeft NOG WEL kaarten.
         if len(players_with_cards) == 1 and \
