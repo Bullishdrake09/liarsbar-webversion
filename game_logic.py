@@ -268,7 +268,20 @@ def make_play(game_state, player_id, cards_played):
     game_state['currentTurn'] = _get_next_active_player_id(game_state, player_id)
     game_state['phase'] = 'awaitingLiarCall' # Na een zet kan er 'LIAR!' geroepen worden of geloofd worden
 
-    # NIEUWE LOGICA: Controleer of de toegewezen speler kan reageren (heeft kaarten).
+    # NIEUWE LOGICA: Controleer hier direct of een verplichte LIAR! call nodig is
+    win_check_result = check_win_condition(game_state)
+    if win_check_result['forced_liar_call']:
+        forced_calling_player_id = win_check_result['calling_player_id']
+        forced_calling_player_name = _get_player_by_id(game_state, forced_calling_player_id)['name']
+        game_state['log'].append(f"Regel geactiveerd: {forced_calling_player_name} wordt gedwongen 'LIAR!' te roepen.")
+        # Roep call_liar aan met de speler die gedwongen wordt te liegen
+        success, msg = call_liar(game_state, forced_calling_player_id)
+        if not success:
+            game_state['log'].append(f"Fout bij automatische LIAR! call: {msg}")
+        return True, "Zet succesvol uitgevoerd en verplichte LIAR! call verwerkt."
+    
+    # Als geen verplichte LIAR! call, dan de normale flow:
+    # Controleer of de toegewezen speler kan reageren (heeft kaarten).
     # Zo niet, schuif de beurt automatisch door.
     current_responder_id = game_state['currentTurn']
     first_candidate_id = current_responder_id
@@ -309,6 +322,8 @@ def make_play(game_state, player_id, cards_played):
                  game_state['log'].append("ERROR: Loop voor het vinden van de volgende reageerder lijkt vast te zitten.")
                  game_state['phase'] = 'gameOver'
                  break
+
+    game_state['log'].append(f"{player['name']} claimt {len(cards_played)} {claimed_card_type}(s) te hebben gelegd.")
 
     return True, "Zet succesvol uitgevoerd."
 
@@ -621,8 +636,11 @@ def check_win_condition(game_state):
     Controleert of aan de winconditie is voldaan (slechts één speler over).
     Retourneert een dict { 'game_over': bool, 'winner': id_of_winner_or_None, 'winner_name': name_or_None, 'forced_liar_call': bool, 'calling_player_id': id_or_None }
     """
-    alive_players = _get_active_players(game_state)
+    alive_players = _get_active_players(game_state) # Players who are alive (not out by dice roll)
     
+    # NIEUW: Identificeer spelers die nog levend zijn EN nog kaarten hebben
+    players_with_cards = [p for p in alive_players if len(p['hand']) > 0]
+
     if len(alive_players) == 1:
         winner = alive_players[0]
         game_state['log'].append(f"{winner['name']} heeft het spel gewonnen!")
@@ -635,28 +653,32 @@ def check_win_condition(game_state):
             'forced_liar_call': False
         }
     
-    # Speciale regel bij 2 spelers: Na een zet wordt automatisch 'LIAR!' geroepen
-    # Dit gebeurt alleen als de spelfase 'awaitingLiarCall' is en er een laatste claim is.
-    # EN de speler die aan de beurt is (en die de LIAR! zou roepen) is degene zonder kaarten,
-    # en de speler met kaarten heeft de laatste claim gedaan.
-    if len(alive_players) == 2 and game_state['phase'] == 'awaitingLiarCall' and game_state['lastClaimDetails']:
+    # NIEUW: Speciale regel: Verplichte 'LIAR!'-roep wanneer er nog maar 2 spelers kaarten hebben,
+    # en de ene speler zojuist al zijn kaarten heeft gespeeld.
+    # Deze regel wordt alleen geactiveerd als we in de 'awaitingLiarCall' fase zijn.
+    if game_state['phase'] == 'awaitingLiarCall' and game_state['lastClaimDetails']:
         last_claimer_id = game_state['lastClaimDetails']['player']
-        player_with_cards = next((p for p in alive_players if p['hand']), None)
-        player_without_cards = next((p for p in alive_players if not p['hand']), None)
-        
-        # Controleer of de speler zonder kaarten aan de beurt is om te reageren
-        # EN of de speler met kaarten de laatste claim heeft gedaan.
-        if player_without_cards and player_with_cards and \
-           game_state['currentTurn'] == player_without_cards['id'] and \
-           last_claimer_id == player_with_cards['id']:
+        claimer_player = _get_player_by_id(game_state, last_claimer_id)
+
+        # De speler die aan de beurt is om te reageren op de claim.
+        current_responder = _get_player_by_id(game_state, game_state['currentTurn'])
+
+        # De voorwaarden voor de verplichte LIAR! call zijn:
+        # 1. Er zijn precies 2 spelers over die nog levend zijn EN kaarten hebben.
+        #    Dit betekent dat alle andere levende spelers (indien aanwezig) geen kaarten meer hebben.
+        # 2. De speler die zojuist de claim deed (claimer_player) is levend en heeft NU 0 kaarten.
+        # 3. De speler die aan de beurt is om te reageren (current_responder) is levend en heeft NOG WEL kaarten.
+        if len(players_with_cards) == 1 and \
+           claimer_player and claimer_player['alive'] and len(claimer_player['hand']) == 0 and \
+           current_responder and current_responder['alive'] and len(current_responder['hand']) > 0:
             
-            game_state['log'].append(f"Met 2 spelers roept {player_without_cards['name']} automatisch 'LIAR!'.")
+            # De speler die nog kaarten heeft (current_responder) wordt gedwongen 'LIAR!' te roepen.
             return {
                 'game_over': False,
                 'winner': None,
                 'winner_name': None,
                 'forced_liar_call': True,
-                'calling_player_id': player_without_cards['id']
+                'calling_player_id': current_responder['id']
             }
 
     # Geen game over of speciale 2-speler regel actief
