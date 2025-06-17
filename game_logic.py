@@ -546,7 +546,8 @@ def roll_mystic_dice(game_state, player_id):
     # Tweede keer (attempts=2): [2,3,4,5,6] (1 valt af)
     # Derde keer (attempts=3): [3,4,5,6] (1,2 vallen af)
     # etc.
-    current_dice_pool = [str(i) for i in range(attempts, 7)] # Start vanaf 'attempts' tot 6
+    # Als attempts 6 is, is de pool alleen ['6'], wat betekent 100% kans om uit te gaan
+    current_dice_pool = [str(i) for i in range(attempts, 7)] 
 
     if not current_dice_pool: # Dit zou alleen bij attempts > 6 kunnen gebeuren, voor de zekerheid
         current_dice_pool = ['6'] # Forceer een 6 als er geen andere opties zijn

@@ -11,7 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const currentPlayerNameSpan = document.getElementById('currentPlayerName');
     const lobbyControls = document.getElementById('lobby-controls');
     const lobbyCodeInput = document.getElementById('lobbyCodeInput');
-    const createLobbyBtn = document.getElementById('createLobbyBtn'); // FIX: Deze regel is gecorrigeerd
+    const createLobbyBtn = document.getElementById('createLobbyBtn'); 
     const joinLobbyBtn = document.getElementById('joinLobbyBtn');
     const lobbyInfo = document.getElementById('lobby-info');
     const currentLobbyCodeSpan = document.getElementById('currentLobbyCode');
@@ -35,9 +35,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const messageText = document.getElementById('messageText');
     const messageBoxCloseBtn = document.getElementById('messageBoxCloseBtn');
 
+    // Elementen voor eliminatie animatie
+    const eliminationOverlay = document.getElementById('elimination-animation-overlay');
+    const eliminatedPlayerNameDisplay = document.getElementById('eliminatedPlayerName');
+
     let selectedCards = []; // Houdt de geselecteerde kaarten in de hand van de speler bij
     let currentLobbyCode = null; // Houdt de huidige lobbycode bij
     let myPlayerId = null; // Houdt de socket ID van de huidige speler bij
+
+    // NIEUW: Houdt de alive status van spelers bij tussen updates
+    let lastKnownPlayerStates = {};
 
     // --- Message Box Functie ---
     function showMessageBox(message) {
@@ -110,11 +117,27 @@ document.addEventListener('DOMContentLoaded', () => {
         lobbySection.classList.add('hidden'); // Verberg lobby UI
         gameSection.classList.remove('hidden'); // Toon spel UI
         showMessageBox(`Het spel is begonnen in lobby ${data.lobbyCode}!`);
+
+        // NIEUW: Initialiseer lastKnownPlayerStates bij start van het spel
+        // Dit is belangrijk om te detecteren wanneer een speler later 'dood' gaat.
+        data.players.forEach(player => {
+            lastKnownPlayerStates[player.id] = player.alive;
+        });
     });
 
     socket.on('game_state_update', (gameState) => {
         console.log('Game State Update:', gameState);
         
+        // NIEUW: Controleer op uitgeschakelde spelers
+        gameState.players.forEach(player => {
+            if (lastKnownPlayerStates[player.id] !== undefined && lastKnownPlayerStates[player.id] && !player.alive) {
+                // Speler was alive en is nu dood -> Toon animatie!
+                showPlayerEliminationAnimation(player.name);
+            }
+            // Update de laatst bekende status
+            lastKnownPlayerStates[player.id] = player.alive;
+        });
+
         // Render spelerslijst
         renderPlayerList(gameState);
 
@@ -157,6 +180,7 @@ document.addEventListener('DOMContentLoaded', () => {
         rollDiceBtn.disabled = true;
         believeClaimBtn.disabled = true; 
         revealedCardsSection.classList.add('hidden'); // Verberg ook de onthulde kaarten
+        lastKnownPlayerStates = {}; // Reset staten bij game over
     });
 
     // --- Render Functies ---
@@ -356,6 +380,18 @@ document.addEventListener('DOMContentLoaded', () => {
             revealedCardsDisplayDiv.innerHTML = '';
             revealedMessageP.textContent = '';
         }
+    }
+
+    // Functie voor eliminatie animatie
+    function showPlayerEliminationAnimation(playerName) {
+        eliminatedPlayerNameDisplay.textContent = playerName;
+        eliminationOverlay.classList.remove('hidden');
+        eliminationOverlay.classList.add('active'); // Voor animatie trigger
+
+        setTimeout(() => {
+            eliminationOverlay.classList.remove('active');
+            eliminationOverlay.classList.add('hidden');
+        }, 2500); // Duur van de animatie (2.5 seconden)
     }
 
 
