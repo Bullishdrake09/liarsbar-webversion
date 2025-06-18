@@ -262,3 +262,10 @@ button:disabled {
 .elimination-overlay.active .eliminated-text {
     animation: textFadeIn 0.8s ease-out forwards;
 }
+
+/* Nieuwe stijl voor dobbelsteen nummers die gerold zijn */
+.dice-face.rolled {
+    text-decoration: line-through; /* Doorstrepen */
+    color: #ff0000a9; /* Lichtgrijs */
+    opacity: 0.7; /* Iets minder opvallend */
+}

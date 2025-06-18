@@ -55,6 +55,14 @@
 
         <!-- Game Interface (verborgen totdat het spel begint) -->
         <div id="game-section" class="hidden grid grid-cols-1 lg:grid-cols-3 gap-8 mt-8">
+            <!-- Nieuwe sectie voor dobbelsteenstatus -->
+            <div id="player-dice-status" class="col-span-full bg-gray-700 p-4 rounded-xl shadow-lg mb-6">
+                <h2 class="text-2xl font-semibold mb-4 text-center">Dobbelsteen Status</h2>
+                <div id="dice-status-container" class="flex flex-col space-y-2">
+                    <!-- Dobbelsteen status per speler komt hier -->
+                </div>
+            </div>
+
             <!-- Linkerkolom: Spelers & Spel Log -->
             <div class="col-span-1 bg-gray-700 p-6 rounded-xl shadow-lg flex flex-col">
                 <h2 class="text-2xl font-semibold mb-4 text-center">Spelers</h2>
@@ -107,6 +115,9 @@
                     <button id="believeClaimBtn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transition duration-200 ease-in-out transform hover:scale-105 hidden" disabled>Ik denk dat ... de waarheid spreekt</button>
                     <button id="callLiarBtn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transition duration-200 ease-in-out transform hover:scale-105" disabled>LIAR!</button>
                     <button id="rollDiceBtn" class="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transition duration-200 ease-in-out transform hover:scale-105 hidden">Werp Dobbelsteen</button>
+                    
+                    <!-- NIEUWE KNOP: Speel opnieuw -->
+                    <button id="restartGameBtn" class="bg-purple-700 hover:bg-purple-800 text-white font-bold py-3 px-6 rounded-lg shadow-md transition duration-200 ease-in-out transform hover:scale-105 hidden mt-4">Speel opnieuw in deze lobby</button>
                 </div>
             </div>
         </div>

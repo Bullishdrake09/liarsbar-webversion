@@ -142,7 +142,8 @@ def create_new_game(lobby_code, player_data_list):
             "alive": True,
             "mysticDice": {
                 "totalSides": 6,
-                "remainingSafeSides": 6 
+                "remainingSafeSides": 6, 
+                "rolledNumbers": [] # NIEUW: Houdt bij welke nummers al gerold zijn door deze speler
             },
             "diceRollAttempts": 0 
         })
@@ -322,9 +323,9 @@ def make_play(game_state, player_id, cards_played):
             current_responder_id = next_potential_responder_id # Test de volgende kandidaat
             looper_count += 1
             if looper_count > max_loops:
-                 game_state['log'].append("ERROR: Loop voor het vinden van de volgende reageerder lijkt vast te zitten.")
-                 game_state['phase'] = 'gameOver'
-                 break
+                   game_state['log'].append("ERROR: Loop voor het vinden van de volgende reageerder lijkt vast te zitten.")
+                   game_state['phase'] = 'gameOver'
+                   break
 
     game_state['log'].append(f"{player['name']} claimt {len(cards_played)} {claimed_card_type}(s) te hebben gelegd.")
 
@@ -520,7 +521,7 @@ def call_liar(game_state, calling_player_id):
 
 def roll_mystic_dice(game_state, player_id):
     """
-    Verwerkt het werpen van de mystieke dobbelsteen door een speler.
+    Verwerkt het werpen van de mystieke dobbelsteen.
     Args:
         game_state (dict): De huidige GameState.
         player_id (str): De ID van de speler die werpt.
@@ -542,19 +543,41 @@ def roll_mystic_dice(game_state, player_id):
     attempts = player_to_roll['diceRollAttempts']
 
     # Bepaal de mogelijke dobbelsteengezichten op basis van het aantal pogingen
-    # Eerste keer (attempts=1): [1,2,3,4,5,6]
-    # Tweede keer (attempts=2): [2,3,4,5,6] (1 valt af)
-    # Derde keer (attempts=3): [3,4,5,6] (1,2 vallen af)
-    # etc.
-    # Als attempts 6 is, is de pool alleen ['6'], wat betekent 100% kans om uit te gaan
-    current_dice_pool = [str(i) for i in range(attempts, 7)] 
-
-    if not current_dice_pool: # Dit zou alleen bij attempts > 6 kunnen gebeuren, voor de zekerheid
-        current_dice_pool = ['6'] # Forceer een 6 als er geen andere opties zijn
-
-    dice_face_rolled = random.choice(current_dice_pool) # Kies een getal uit de gereduceerde pool
-    roll_result_is_loss = (dice_face_rolled == '6') # Verlies als een 6 wordt gerold
+    # en filter EERST de al gerolde nummers uit.
+    available_dice_pool = [str(i) for i in range(1, 7)] # Alle 6 gezichten als strings
     
+    # Filter nummers die de speler al heeft gerold in deze game
+    available_dice_pool = [
+        face for face in available_dice_pool 
+        if face not in player_to_roll['mysticDice']['rolledNumbers']
+    ]
+
+    # Filter nummers lager dan 'attempts' (voor de progressieve moeilijkheid)
+    # Zorg dat 'attempts' niet groter is dan 6, anders blijft er niets over
+    current_attempt_filter = min(attempts, 6) # max 6, zelfs als attempts hoger is
+    
+    # We filteren nu op de face waarde als getal, niet de string vergelijking
+    current_dice_pool = [
+        face for face in available_dice_pool 
+        if int(face) >= current_attempt_filter
+    ]
+    
+    if not current_dice_pool:
+        # Dit betekent dat alle mogelijke nummers al gerold zijn, of gefilterd
+        # door attempts. In dit scenario moet de speler automatisch een '6' verliezen.
+        game_state['log'].append(f"{player_to_roll['name']} heeft alle dobbelsteengezichten al gerold, of de moeilijkheid is te hoog. Automatisch een 6.")
+        dice_face_rolled = '6'
+        roll_result_is_loss = True
+    else:
+        dice_face_rolled = random.choice(current_dice_pool) # Kies een getal uit de gereduceerde pool
+        roll_result_is_loss = (dice_face_rolled == '6') # Verlies als een 6 wordt gerold
+    
+    # Voeg het gerolde nummer toe aan de lijst van gerolde nummers voor deze speler
+    player_to_roll['mysticDice']['rolledNumbers'].append(dice_face_rolled)
+    # Sorteer de lijst om consistentie te bewaren (optioneel, maar netjes)
+    player_to_roll['mysticDice']['rolledNumbers'].sort()
+
+
     player_name = player_to_roll['name']
 
     # Vul de diceRollOutcome in revealedCardsInfo
@@ -582,6 +605,7 @@ def roll_mystic_dice(game_state, player_id):
             game_state['currentTurn'] = next_turn_player_id
             game_state['phase'] = 'awaitingPlay'
             # Start een nieuwe ronde: deel kaarten opnieuw uit, kies nieuw deckType
+            # Belangrijk: rolledDiceNumbers NIET resetten hier
             _start_new_round(game_state, game_state['currentTurn'])
 
     else:
@@ -592,6 +616,7 @@ def roll_mystic_dice(game_state, player_id):
         game_state['phase'] = 'awaitingPlay'
         game_state['currentTurn'] = player_id # Beurt blijft bij dezelfde speler (die net gedobbeld heeft)
         # Start een nieuwe ronde: deel kaarten opnieuw uit, kies nieuw deckType
+        # Belangrijk: rolledDiceNumbers NIET resetten hier
         _start_new_round(game_state, player_id) # De speler die de beurt krijgt is degene die de dobbelsteen succesvol wierp
 
     # Reset de onthulde kaarten info na de dobbelsteenworp (of herverdeling)
@@ -606,6 +631,7 @@ def _start_new_round(game_state, starting_player_id):
     """
     Start een nieuwe ronde: deelt kaarten opnieuw uit, kiest een nieuw deckType,
     en reset de stapel en dobbelsteenpogingen.
+    Belangrijk: De lijst van gerolde dobbelsteennummers per speler wordt NIET gereset in een nieuwe ronde.
     Args:
         game_state (dict): De huidige GameState.
         starting_player_id (str): De ID van de speler die de eerste beurt van de nieuwe ronde krijgt.
@@ -616,7 +642,9 @@ def _start_new_round(game_state, starting_player_id):
     for player in game_state['players']:
         player['alive'] = True # Zet alle spelers weer levend
         player['diceRollAttempts'] = 0 # Reset dobbelsteenpogingen voor iedereen
-    
+        # BELANGRIJK: player['mysticDice']['rolledNumbers'] wordt HIER NIET gereset
+        # Deze wordt alleen gereset wanneer een HELE NIEUWE GAME begint (create_new_game)
+        
     # Deel kaarten opnieuw uit aan ALLE spelers die nu 'alive' zijn (dus iedereen in de lobby)
     all_players_in_lobby = _get_all_players_in_lobby(game_state)
     _create_and_deal_deck(all_players_in_lobby) # Gebruik de nieuwe deal functie

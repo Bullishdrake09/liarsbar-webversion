@@ -34,6 +34,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const messageBox = document.getElementById('messageBox');
     const messageText = document.getElementById('messageText');
     const messageBoxCloseBtn = document.getElementById('messageBoxCloseBtn');
+    const playerDiceStatusContainer = document.getElementById('dice-status-container'); 
+    const restartGameBtn = document.getElementById('restartGameBtn'); // NIEUW: Restart game knop
 
     // Elementen voor eliminatie animatie
     const eliminationOverlay = document.getElementById('elimination-animation-overlay');
@@ -43,7 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentLobbyCode = null; // Houdt de huidige lobbycode bij
     let myPlayerId = null; // Houdt de socket ID van de huidige speler bij
 
-    // NIEUW: Houdt de alive status van spelers bij tussen updates
+    // Houdt de alive status van spelers bij tussen updates
     let lastKnownPlayerStates = {};
 
     // --- Message Box Functie ---
@@ -118,17 +120,27 @@ document.addEventListener('DOMContentLoaded', () => {
         gameSection.classList.remove('hidden'); // Toon spel UI
         showMessageBox(`Het spel is begonnen in lobby ${data.lobbyCode}!`);
 
-        // NIEUW: Initialiseer lastKnownPlayerStates bij start van het spel
-        // Dit is belangrijk om te detecteren wanneer een speler later 'dood' gaat.
-        data.players.forEach(player => {
-            lastKnownPlayerStates[player.id] = player.alive;
-        });
+        // Verberg de restart knop als een nieuw spel start
+        restartGameBtn.classList.add('hidden');
+
+        // Initialiseer lastKnownPlayerStates bij start van het spel
+        // De volledige player data komt nu via game_state_update, dus deze init is hier niet strikt nodig,
+        // maar kan helpen bij een race condition. Voor de zekerheid laten we hem staan.
+        // Let op: 'data' van game_started bevat niet de 'alive' status, dus we resetten 'lastKnownPlayerStates'
+        // en laten de eerste game_state_update dit correct opvullen.
+        lastKnownPlayerStates = {};
     });
 
     socket.on('game_state_update', (gameState) => {
         console.log('Game State Update:', gameState);
         
-        // NIEUW: Controleer op uitgeschakelde spelers
+        // Initialiseer lastKnownPlayerStates als het nog leeg is (eerste game_state_update)
+        if (Object.keys(lastKnownPlayerStates).length === 0 && gameState.players.length > 0) {
+            gameState.players.forEach(player => {
+                lastKnownPlayerStates[player.id] = player.alive;
+            });
+        }
+
         gameState.players.forEach(player => {
             if (lastKnownPlayerStates[player.id] !== undefined && lastKnownPlayerStates[player.id] && !player.alive) {
                 // Speler was alive en is nu dood -> Toon animatie!
@@ -140,6 +152,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Render spelerslijst
         renderPlayerList(gameState);
+
+        // Render dobbelsteen status
+        renderPlayerDiceStatus(gameState); 
 
         // Render middenkaarten (deck type)
         renderDeckTypeCards(gameState);
@@ -174,13 +189,25 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             showMessageBox('Spel afgelopen! Geen winnaar (mogelijk alle spelers uitgeschakeld).');
         }
-        // Uitschakelen van actieknoppen of terug naar lobby optie
+        // Uitschakelen van actieknoppen
         makePlayBtn.disabled = true;
         callLiarBtn.disabled = true;
         rollDiceBtn.disabled = true;
         believeClaimBtn.disabled = true; 
         revealedCardsSection.classList.add('hidden'); // Verberg ook de onthulde kaarten
         lastKnownPlayerStates = {}; // Reset staten bij game over
+
+        // Toon de restart game knop
+        restartGameBtn.classList.remove('hidden');
+    });
+
+    socket.on('game_restarted', (data) => {
+        // Hoewel game_state_update de UI al zal bijwerken,
+        // kunnen we hier een bevestiging tonen of extra logica uitvoeren
+        console.log(`Spel opnieuw gestart in lobby ${data.lobbyCode}`);
+        showMessageBox(`Nieuw spel gestart in lobby ${data.lobbyCode}!`);
+        // Verberg de restart knop na het starten van een nieuw spel
+        restartGameBtn.classList.add('hidden');
     });
 
     // --- Render Functies ---
@@ -207,15 +234,15 @@ document.addEventListener('DOMContentLoaded', () => {
             // Voeg aantal dobbelsteen pogingen toe indien van toepassing
             // Update: toon "Dood" als speler niet meer alive is
             if (!player.alive) {
-                 const statusSpan = document.createElement('span');
-                 statusSpan.classList.add('ml-2', 'text-sm', 'text-red-400', 'font-bold');
-                 statusSpan.textContent = '(Dood)';
-                 playerStatusDiv.appendChild(statusSpan);
+                    const statusSpan = document.createElement('span');
+                    statusSpan.classList.add('ml-2', 'text-sm', 'text-red-400', 'font-bold');
+                    statusSpan.textContent = '(Dood)';
+                    playerStatusDiv.appendChild(statusSpan);
             } else if (player.diceRollAttempts > 0) {
-                 const diceAttemptsSpan = document.createElement('span');
-                 diceAttemptsSpan.classList.add('ml-2', 'text-sm', 'text-gray-400');
-                 diceAttemptsSpan.textContent = `(Dobbelen: ${player.diceRollAttempts}x)`;
-                 playerStatusDiv.appendChild(diceAttemptsSpan);
+                    const diceAttemptsSpan = document.createElement('span');
+                    diceAttemptsSpan.classList.add('ml-2', 'text-sm', 'text-gray-400');
+                    diceAttemptsSpan.textContent = `(Dobbelen: ${player.diceRollAttempts}x)`;
+                    playerStatusDiv.appendChild(diceAttemptsSpan);
             }
 
             // Toon "Jij" label voor de huidige speler
@@ -230,6 +257,40 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Functie om de dobbelsteenstatus per speler te renderen
+    function renderPlayerDiceStatus(gameState) {
+        playerDiceStatusContainer.innerHTML = ''; // Leeg de container
+
+        gameState.players.forEach(player => {
+            const playerDiceDiv = document.createElement('div');
+            playerDiceDiv.classList.add('flex', 'items-center', 'justify-between', 'p-2', 'bg-gray-800', 'rounded-lg', 'shadow-md', 'mb-2');
+
+            const playerNameSpan = document.createElement('span');
+            playerNameSpan.classList.add('font-semibold', 'text-lg');
+            playerNameSpan.textContent = player.name;
+            playerDiceDiv.appendChild(playerNameSpan);
+
+            const diceNumbersDiv = document.createElement('div');
+            diceNumbersDiv.classList.add('flex', 'space-x-2');
+
+            // Itereer over alle mogelijke dobbelsteengezichten (1 t/m 6)
+            for (let i = 1; i <= 6; i++) {
+                const diceFaceSpan = document.createElement('span');
+                diceFaceSpan.classList.add('dice-face', 'text-xl', 'font-bold', 'py-1', 'px-2', 'rounded-md');
+                diceFaceSpan.textContent = i;
+
+                // Controleer of dit nummer al is gerold door de speler
+                if (player.mysticDice && player.mysticDice.rolledNumbers && player.mysticDice.rolledNumbers.includes(String(i))) {
+                    diceFaceSpan.classList.add('rolled'); // Voeg 'rolled' class toe voor doorstrepen
+                }
+                diceNumbersDiv.appendChild(diceFaceSpan);
+            }
+            playerDiceDiv.appendChild(diceNumbersDiv);
+            playerDiceStatusContainer.appendChild(playerDiceDiv);
+        });
+    }
+
+
     function renderDeckTypeCards(gameState) {
         deckTypeCardsDiv.innerHTML = '';
         // Er is nu slechts EEN middenkaart (deckType[0])
@@ -239,7 +300,7 @@ document.addEventListener('DOMContentLoaded', () => {
         cardElement.textContent = cardType;
         
         let icon = '';
-        if (cardType === 'Koning') icon = '�';
+        if (cardType === 'Koning') icon = '👑';
         else if (cardType === 'Koningin') icon = '👸';
         else if (cardType === 'Boer') icon = '🤵';
         
@@ -304,13 +365,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 // Voeg click listener toe voor kaartselectie
                 cardElement.addEventListener('click', () => {
-                    cardElement.classList.toggle('selected');
-                    if (cardElement.classList.contains('selected')) {
-                        selectedCards.push(card);
+                    // Alleen selecteer/deselecteer als het mijn beurt is en in de juiste fase
+                    const currentGameState = socket.currentGameState; // Pak de laatste game state op de client
+                    const myPlayerInState = currentGameState.players.find(p => p.id === myPlayerId);
+
+                    if (currentGameState.currentTurn === myPlayerId && currentGameState.phase === 'awaitingPlay' && myPlayerInState.alive) {
+                        cardElement.classList.toggle('selected');
+                        if (cardElement.classList.contains('selected')) {
+                            selectedCards.push(card);
+                        } else {
+                            selectedCards = selectedCards.filter(c => c !== card);
+                        }
+                        updateMakePlayButtonState(currentGameState); // Gebruik de actuele gameState
                     } else {
-                        selectedCards = selectedCards.filter(c => c !== card);
+                        showMessageBox("Je kunt nu geen kaarten selecteren.");
                     }
-                    updateMakePlayButtonState(gameState); 
                 });
                 playerHandDiv.appendChild(cardElement);
             });
@@ -354,7 +423,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const cardElement = document.createElement('div');
                     cardElement.classList.add('card', 'revealed-card'); // Voeg 'revealed-card' class toe voor animatie
                     // Pas de animationDelay aan naar 0.5s per kaart
-                    cardElement.style.animationDelay = `${index * 0.5}s`; // Veranderd van 0.1s naar 0.5s
+                    cardElement.style.animationDelay = `${index * 0.5}s`; 
 
                     let icon = '';
                     if (card === 'Koning') icon = '👑';
@@ -413,7 +482,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Get my player object to check hand size
         const myPlayer = gameState.players.find(p => p.id === myPlayerId);
-        const hasCards = myPlayer && myPlayer.hand && myPlayer.hand.length > 0;
+        // Spelers die niet 'alive' zijn kunnen geen acties meer uitvoeren.
+        const canAct = myPlayer && myPlayer.alive;
+
 
         // Reset alle knoppen zichtbaarheid en disabled state
         makePlayBtn.disabled = true;
@@ -423,24 +494,26 @@ document.addEventListener('DOMContentLoaded', () => {
         callLiarBtn.classList.add('hidden'); 
         rollDiceBtn.classList.add('hidden'); 
         rollDiceBtn.disabled = true;
+        restartGameBtn.classList.add('hidden'); // Verberg restart knop standaard
 
         if (isGameOver) {
+            restartGameBtn.classList.remove('hidden'); // Toon de restart knop als het spel voorbij is
             return;
         }
 
-        if (isMyTurn) {
+        if (isMyTurn && canAct) { // Alleen acties als het mijn beurt is EN ik actief ben
             if (isAwaitingPlay) {
                 // Mijn beurt om kaarten te leggen
                 // Enable if I have selected cards AND I have cards in hand.
-                makePlayBtn.disabled = selectedCards.length === 0 || !hasCards; 
-                // All other buttons should be hidden/disabled in this phase
+                makePlayBtn.disabled = selectedCards.length === 0 || myPlayer.hand.length === 0; 
             } else if (isAwaitingLiarCall) {
                 // Mijn beurt om te reageren op een claim van een ANDERE speler
                 makePlayBtn.disabled = true; // Kan geen kaarten leggen in deze fase
 
                 const lastClaimerName = gameState.lastClaimDetails ? gameState.lastClaimDetails.playerName : null;
                 // Enable LIAR/BELIEVE only if it's not my own claim AND I have cards
-                if (lastClaimerName && gameState.lastClaimDetails.player !== myPlayerId && hasCards) { 
+                // (Omdat je anders niet kunt geloven/liar roepen als je geen kaarten meer hebt)
+                if (lastClaimerName && gameState.lastClaimDetails.player !== myPlayerId && myPlayer.hand.length > 0) { 
                     believeClaimBtn.classList.remove('hidden'); 
                     believeClaimBtn.disabled = false;
                     believeClaimBtn.textContent = `Ik denk dat ${lastClaimerName} de waarheid spreekt`;
@@ -457,14 +530,23 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (isResolvingDiceRoll) {
                 // Mijn beurt om dobbelsteen te werpen
                 // Deze actie hangt niet af van het hebben van kaarten in de hand.
-                rollDiceBtn.classList.remove('hidden');
-                rollDiceBtn.disabled = false;
-                // Andere knoppen uitgeschakeld
+                // Controleren of de huidige speler de speler is die de dobbelsteen moet werpen
+                if (gameState.revealedCardsInfo.playerToRollDice === myPlayerId) {
+                    rollDiceBtn.classList.remove('hidden');
+                    rollDiceBtn.disabled = false;
+                } else {
+                    // Niet mijn beurt om te dobbelen
+                    rollDiceBtn.classList.add('hidden');
+                    rollDiceBtn.disabled = true;
+                }
             }
         } else {
-            // Niet mijn beurt, alle actieknoppen zijn disabled/verborgen voor mij.
-            // (al afgehandeld door standaard reset, expliciet voor duidelijkheid)
+            // Niet mijn beurt of ik ben uitgeschakeld, alle actieknoppen zijn disabled/verborgen voor mij.
+            // (al afgehandeld door standaard reset)
         }
+
+        // Sla de actuele gameState op de socket op, zodat we deze in de click listener kunnen gebruiken
+        socket.currentGameState = gameState;
     }
 
 
@@ -495,9 +577,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     startGameBtn.addEventListener('click', () => {
         console.log("Start Spel knop geklikt.");
-        console.log("Huidige Lobby Code (client):", currentLobbyCode);
-        console.log("Mijn Speler ID (client):", myPlayerId);
-
         if (currentLobbyCode) {
             socket.emit('start_game_request', { lobbyCode: currentLobbyCode });
         } else {
@@ -537,8 +616,19 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     rollDiceBtn.addEventListener('click', () => {
+        if (currentLobbyCode && myPlayerId) { 
+            socket.emit('roll_dice', { lobbyCode: currentLobbyCode, playerId: myPlayerId });
+        } else {
+            showMessageBox('Fout: Kan dobbelsteen niet werpen zonder lobby of speler ID.');
+        }
+    });
+
+    // NIEUW: Event Listener voor de restartGameBtn
+    restartGameBtn.addEventListener('click', () => {
         if (currentLobbyCode) {
-            socket.emit('roll_dice', { lobbyCode: currentLobbyCode });
+            socket.emit('restart_game_request', { lobbyCode: currentLobbyCode });
+        } else {
+            showMessageBox('Kan spel niet herstarten, geen actieve lobby.');
         }
     });
 

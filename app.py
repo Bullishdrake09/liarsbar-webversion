@@ -10,9 +10,10 @@ from game_logic import (
     make_play,
     call_liar,
     roll_mystic_dice,
-    believe_claim, # NIEUW: Importeer de believe_claim functie
+    believe_claim,
     check_win_condition,
-    _get_player_by_id # Deze is handig voor logging en namen
+    _get_player_by_id, # Deze is handig voor logging en namen
+    _get_next_active_player_id # Deze is nodig om beurtvolgorde te beheren bij disconnect
 )
 
 app = Flask(__name__)
@@ -55,17 +56,16 @@ def get_public_game_state(game_state, current_player_id=None):
     return public_state
 
 def broadcast_game_state(lobby_code):
-    """Verstuurt de bijgewerkte publieke GameState naar alle spelers in een lobby."""
+    """Verstuurt de bijgewerkte publieke GameState naar alle spelers in een lobby, levend of niet."""
     game_state = lobbies.get(lobby_code)
     if game_state:
-        # Loop door alle spelers in de lobby en stuur hen hun specifieke (gefilterde) state
+        # Loop door ALLE spelers in de lobby (verwijderde de 'if player['alive']' check)
         for player in game_state['players']:
-            if player['alive']: # Stuur alleen naar actieve spelers
-                player_id = player['id']
-                # Gebruik de helper functie om de publieke staat te krijgen,
-                # maar met de hand van de specifieke speler zichtbaar.
-                public_state = get_public_game_state(game_state, player_id)
-                socketio.emit('game_state_update', public_state, room=player_id) # Emit naar de individuele speler_id (wat hun sid is)
+            player_id = player['id']
+            # Gebruik de helper functie om de publieke staat te krijgen,
+            # maar met de hand van de specifieke speler zichtbaar.
+            public_state = get_public_game_state(game_state, player_id)
+            socketio.emit('game_state_update', public_state, room=player_id) # Emit naar de individuele speler_id (wat hun sid is)
     else:
         print(f"Waarschuwing: Geen GameState gevonden voor lobby {lobby_code} bij broadcast.")
 
@@ -100,13 +100,14 @@ def handle_disconnect():
     # Loop over een kopie van de items om wijzigingen tijdens iteratie toe te staan
     for lobby_code, game_state in list(lobbies.items()): 
         player_found_in_lobby = False
-        for player in game_state['players']:
-            if player['id'] == player_sid:
-                game_state['players'].remove(player)
-                game_state['log'].append(f"{player_name} heeft de lobby verlaten.")
-                print(f"{player_name} verwijderd uit lobby {lobby_code}.")
-                player_found_in_lobby = True
-                break
+        # Vind de speler in de game_state.players lijst
+        player_obj = next((p for p in game_state['players'] if p['id'] == player_sid), None)
+        
+        if player_obj:
+            game_state['players'].remove(player_obj)
+            game_state['log'].append(f"{player_name} heeft de lobby verlaten.")
+            print(f"{player_name} verwijderd uit lobby {lobby_code}.")
+            player_found_in_lobby = True
         
         if player_found_in_lobby:
             # Als de lobby leeg is, verwijder deze volledig
@@ -122,10 +123,11 @@ def handle_disconnect():
                     # Als het zijn beurt was, zet de beurt op de volgende actieve speler
                     if game_state['currentTurn'] == player_sid:
                         game_state['currentTurn'] = _get_next_active_player_id(game_state, player_sid)
-                        if not game_state['currentTurn'] and len([p for p in game_state['players'] if p['alive']]) > 1:
-                            # Dit kan gebeuren als de laatste in de turnOrder disconnected en er nog meer spelers zijn,
-                            # dan moet de beurt naar de eerste in de turnOrder
-                            game_state['currentTurn'] = game_state['turnOrder'][0] if game_state['turnOrder'] else None
+                        # Als er niemand is om de beurt door te geven maar er zijn nog actieve spelers,
+                        # geef de beurt aan de eerste in de (nieuwe) turnOrder.
+                        if not game_state['currentTurn'] and len([p for p in game_state['players'] if p['alive']]) > 0:
+                             game_state['currentTurn'] = game_state['turnOrder'][0] if game_state['turnOrder'] else None
+
 
                     # Controleer de winconditie als een speler disconnect
                     win_check_result = check_win_condition(game_state)
@@ -273,7 +275,6 @@ def handle_make_play(data):
         return
     
     # Roep de game_logic functie aan om de zet te verwerken
-    # Verwijder claimed_card_type uit de argumenten, omdat game_logic.make_play het niet meer verwacht
     success, message = make_play(game_state, player_sid, cards_played) 
 
     if not success:
@@ -287,8 +288,7 @@ def handle_make_play(data):
         calling_player_id = win_check_result['calling_player_id']
         call_liar(game_state, calling_player_id) # De game_logic.call_liar zal de fase aanpassen
         game_state['log'].append(f"Automatische 'LIAR!' call door {_get_player_by_id(game_state, calling_player_id)['name']} (speciale 2-spelers regel).")
-        # De fase is nu 'resolvingDiceRoll', de beurt is bij de roepende speler
-
+    
     broadcast_game_state(lobby_code) # Verstuurt de bijgewerkte GameState
 
 
@@ -313,7 +313,7 @@ def handle_call_liar(data):
     broadcast_game_state(lobby_code)
 
 
-@socketio.on('believe_claim') # NIEUW: Nieuwe event handler voor 'believe_claim'
+@socketio.on('believe_claim') 
 def handle_believe_claim(data):
     """Behandelt een speler die besluit de claim van de vorige speler te geloven."""
     lobby_code = data.get('lobbyCode')
@@ -338,7 +338,7 @@ def handle_believe_claim(data):
 def handle_roll_dice(data):
     """Behandelt het werpen van de mystieke dobbelsteen."""
     lobby_code = data.get('lobbyCode')
-    player_sid = request.sid
+    player_sid = data.get('playerId') # Zorg dat de player_id hier correct wordt meegegeven
 
     game_state = lobbies.get(lobby_code)
     if not game_state:
@@ -384,13 +384,36 @@ def handle_chat_message(data):
         lobbies[lobby_code]['log'].append(f"CHAT: {full_message}")
         # Verstuur het chatbericht alleen als 'chat_message' event
         socketio.emit('chat_message', {'message': full_message}, room=lobby_code)
-        # We hoeven niet de volledige game state te broadcasten voor alleen een chatbericht,
-        # tenzij we willen dat de chat log in de game_state.log verschijnt en direct wordt weergegeven via broadcast_game_state.
-        # Voor nu alleen de chat_message event. Als de log zichtbaar moet zijn, dan broadcast_game_state uncommenten.
-        # broadcast_game_state(lobby_code)
     else:
         emit('error_message', {'message': 'Bericht of naam ontbreekt.'})
 
+@socketio.on('restart_game_request')
+def handle_restart_game_request(data):
+    """
+    Behandelt de aanvraag om het spel opnieuw te starten in dezelfde lobby.
+    """
+    lobby_code = data.get('lobbyCode')
+    player_sid = request.sid
+
+    game_state = lobbies.get(lobby_code)
+    if not game_state:
+        emit('error_message', {'message': 'Lobby niet gevonden.'})
+        return
+
+    # Optioneel: Controleer of de aanvrager de maker van de lobby is
+    # if player_sid != game_state['players'][0]['id']:
+    #     emit('error_message', {'message': 'Alleen de maker van de lobby kan het spel opnieuw starten.'})
+    #     return
+
+    # Reset de game state via game_logic.py
+    # Zorg ervoor dat alle spelers die in de lobby waren (ook de "dode" spelers) opnieuw meedoen
+    player_ids_and_names = [(p['id'], p['name']) for p in game_state['players']]
+    new_game_state = create_new_game(lobby_code, player_ids_and_names)
+    lobbies[lobby_code] = new_game_state # Overschrijf de oude game state met de nieuwe
+
+    print(f"Spel opnieuw gestart in lobby {lobby_code}.")
+    broadcast_game_state(lobby_code) # Verstuurt de nieuwe GameState naar alle clients
+    socketio.emit('game_restarted', {'lobbyCode': lobby_code}, room=lobby_code) # Nieuw event voor client-side
 
 if __name__ == '__main__':
     # Start de Flask-SocketIO server
