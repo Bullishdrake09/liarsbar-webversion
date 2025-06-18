@@ -417,4 +417,4 @@ def handle_restart_game_request(data):
 
 if __name__ == '__main__':
     # Start de Flask-SocketIO server
-    socketio.run(app, debug=True, allow_unsafe_werkzeug=True, port=5000)
+    socketio.run(app, debug=False, host=0.0.0.0 ,allow_unsafe_werkzeug=True, port=5000)
